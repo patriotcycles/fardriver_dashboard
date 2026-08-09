@@ -69,7 +69,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
@@ -279,28 +278,28 @@ fun DashboardScreen(
                 .fillMaxSize()
                 .background(Color.Black)
                 .padding(paddingValues)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = 14.dp, vertical = 2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top
         ) {
             // Top Gauges Section
             val settings by repository.settings.collectAsState()
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
+                    .height(260.dp)
             ) {
                 // AMPS Gauge (Left)
                 AnalogGauge(
                     value = uiState.lineCurrent,
                     minValue = settings.ampsMin,
                     maxValue = settings.ampsMax,
-                    numLabels = 5,
                     label = "AMPS",
-                    sweepAngle = 135f,
+                    isBoostActive = uiState.lineCurrent >= (settings.ampsMax + 5f),
                     modifier = Modifier
-                        .size(190.dp)
+                        .size(180.dp)
                         .align(Alignment.BottomStart)
-                        .offset(x = (-10).dp)
+                        .offset(x = (-20).dp)
                 )
 
                 // MPH Gauge (Right)
@@ -308,25 +307,53 @@ fun DashboardScreen(
                     value = uiState.gpsSpeed,
                     minValue = settings.mphMin,
                     maxValue = settings.mphMax,
-                    numLabels = 5,
                     label = "MPH",
                     gear = uiState.gear,
+                    topspeed = uiState.maxSpeed,
                     modifier = Modifier
-                        .size(250.dp)
+                        .size(240.dp)
                         .align(Alignment.TopEnd)
+                        .offset(x = (20).dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Battery Level Meter
+            // Battery Level Meter (Moved up)
             BatteryLevelMeter(
                 voltage = uiState.voltage,
                 minV = settings.voltageMin,
                 maxV = settings.voltageMax
             )
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Temp Gauges Row
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AnalogGauge(
+                    value = uiState.controllerTemp,
+                    minValue = settings.tempMin,
+                    maxValue = settings.tempMax,
+                    label = "CTRL\nTEMP",
+                    showDigitalValue = false,
+                    startAngle = 180f,
+                    sweepAngle = 180f,
+                    modifier = Modifier.weight(1f).height(80.dp)
+                )
+                AnalogGauge(
+                    value = uiState.motorTemp,
+                    minValue = settings.tempMin,
+                    maxValue = settings.tempMax,
+                    label = "MOTR\nTEMP",
+                    showDigitalValue = false,
+                    startAngle = 180f,
+                    sweepAngle = 180f,
+                    modifier = Modifier.weight(1f).height(80.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Stats Table
             StatsSection(uiState, settings)
@@ -340,175 +367,216 @@ fun AnalogGauge(
     value: Float,
     minValue: Float = 0f,
     maxValue: Float = 50f,
-    numLabels: Int,
     label: String,
     modifier: Modifier = Modifier,
     startAngle: Float = 140f,
     sweepAngle: Float = 260f,
     gear: Int? = null,
-    warningValue: Float? = null
+    topspeed: Float? = null,
+    warningValue: Float? = null,
+    showDigitalValue: Boolean = true,
+    isBoostActive: Boolean = false
 ) {
     val displayWarningValue = warningValue ?: (minValue + (maxValue - minValue) * 0.8f)
+    val baseColor = if (isBoostActive) Color.Red else Color.White
+    val accentColor = if (isBoostActive) Color.Red else Color(0xFF00E676) // Modern Green
+    val isSemiCircle = sweepAngle <= 181f
 
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
+        val widthDp = maxWidth
+        val heightDp = maxHeight
+        
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val center = Offset(size.width / 2, size.height / 2)
-            val radius = size.width / 2
-            val innerRadius = radius * 0.85f
-            val tickOuterRadius = radius * 0.88f
-            val tickInnerRadius = radius * 0.82f
-            val labelRadius = radius * 0.98f
+            val center = if (isSemiCircle) Offset(size.width / 2, size.height * 0.9f) else Offset(size.width / 2, size.height / 2)
+            val radius = if (isSemiCircle) size.height * 0.85f else size.width / 2
+            val innerRadius = radius * 0.82f
+            val outerRadius = radius * 0.96f
+            val tickInnerRadius = radius * 0.88f
+            val tickOuterRadius = radius * 0.94f
 
-            // Background Arc
+            // 1. Outer subtle border arc
             drawArc(
-                color = Color.White.copy(alpha = 0.1f),
+                color = Color.White.copy(alpha = 0.2f),
+                startAngle = startAngle - 2f,
+                sweepAngle = sweepAngle + 4f,
+                useCenter = false,
+                topLeft = center - Offset(outerRadius, outerRadius),
+                size = androidx.compose.ui.geometry.Size(outerRadius * 2, outerRadius * 2),
+                style = Stroke(width = 2f)
+            )
+
+            // 2. Track Background (Dim glow)
+            drawArc(
+                color = accentColor.copy(alpha = 0.1f),
                 startAngle = startAngle,
                 sweepAngle = sweepAngle,
                 useCenter = false,
                 topLeft = center - Offset(innerRadius, innerRadius),
                 size = androidx.compose.ui.geometry.Size(innerRadius * 2, innerRadius * 2),
-                style = Stroke(width = 8f, cap = StrokeCap.Round)
+                style = Stroke(width = 14f, cap = StrokeCap.Butt)
             )
 
-            // Warning Arc (Red segment)
-            if (displayWarningValue < maxValue) {
-                val warningStartAngle = startAngle + ((displayWarningValue - minValue) / (maxValue - minValue)) * sweepAngle
-                val warningSweep = sweepAngle - (warningStartAngle - startAngle)
-                drawArc(
-                    color = Color.Red.copy(alpha = 0.8f),
-                    startAngle = warningStartAngle,
-                    sweepAngle = warningSweep,
-                    useCenter = false,
-                    topLeft = center - Offset(innerRadius, innerRadius),
-                    size = androidx.compose.ui.geometry.Size(innerRadius * 2, innerRadius * 2),
-                    style = Stroke(width = 8f, cap = StrokeCap.Butt)
+            // Warning Segment (Red part of the background track)
+            val warningStartAngle = startAngle + ((displayWarningValue - minValue) / (maxValue - minValue)) * sweepAngle
+            val warningSweep = sweepAngle - (warningStartAngle - startAngle)
+            drawArc(
+                color = Color.Red.copy(alpha = 0.3f),
+                startAngle = warningStartAngle,
+                sweepAngle = warningSweep,
+                useCenter = false,
+                topLeft = center - Offset(innerRadius, innerRadius),
+                size = androidx.compose.ui.geometry.Size(innerRadius * 2, innerRadius * 2),
+                style = Stroke(width = 14f, cap = StrokeCap.Butt)
+            )
+
+            // 3. Ticks
+            val range = maxValue - minValue
+            val tickStep = if (range > 150) 2f else 1f // Adjust density based on range
+            val numTicks = (range / tickStep).toInt()
+            
+            for (i in 0..numTicks) {
+                val tickValue = minValue + (i * tickStep)
+                val angle = startAngle + (i.toFloat() * tickStep / range) * sweepAngle
+                val rad = Math.toRadians(angle.toDouble())
+                
+                val isMajor = tickValue.toInt() % 10 == 0
+                val isMid = tickValue.toInt() % 5 == 0 && !isMajor
+                
+                val tStart = if (isMajor) tickInnerRadius - 10f else if (isMid) tickInnerRadius - 6f else tickInnerRadius
+                val tEnd = tickOuterRadius
+                
+                val color = if (isMajor) Color.White else Color.White.copy(alpha = 0.4f)
+                val stroke = if (isMajor) 2.5f else 1f
+
+                drawLine(
+                    color = color,
+                    start = Offset(
+                        center.x + (tStart * cos(rad)).toFloat(),
+                        center.y + (tStart * sin(rad)).toFloat()
+                    ),
+                    end = Offset(
+                        center.x + (tEnd * cos(rad)).toFloat(),
+                        center.y + (tEnd * sin(rad)).toFloat()
+                    ),
+                    strokeWidth = stroke
                 )
             }
 
-            // Value Arc (White)
-            val valueSweep = ((value - minValue) / (maxValue - minValue)).coerceIn(0f, 1f) * sweepAngle
+            // 4. Progress Arc
+            val valuePercentage = ((value - minValue) / (maxValue - minValue)).coerceIn(0f, 1.1f)
+            val valueSweep = valuePercentage * sweepAngle
+            
             drawArc(
-                color = Color.White,
+                color = accentColor,
                 startAngle = startAngle,
                 sweepAngle = valueSweep,
                 useCenter = false,
                 topLeft = center - Offset(innerRadius, innerRadius),
                 size = androidx.compose.ui.geometry.Size(innerRadius * 2, innerRadius * 2),
-                style = Stroke(width = 10f, cap = StrokeCap.Round)
+                style = Stroke(width = 14f, cap = StrokeCap.Butt)
             )
 
-            // Ticks and Labels
-            val totalTicks = (numLabels - 1) * 5
-            for (i in 0..totalTicks) {
-                val angle = startAngle + (i.toFloat() / totalTicks) * sweepAngle
-                val rad = Math.toRadians(angle.toDouble())
-                val isMajor = i % 5 == 0
-                val tickLen = if (isMajor) 15f else 8f
-                val color = if (isMajor) Color.White else Color.White.copy(alpha = 0.5f)
-
-                val start = Offset(
-                    center.x + (tickOuterRadius * cos(rad)).toFloat(),
-                    center.y + (tickOuterRadius * sin(rad)).toFloat()
-                )
-                val end = Offset(
-                    center.x + ((tickOuterRadius - tickLen) * cos(rad)).toFloat(),
-                    center.y + ((tickOuterRadius - tickLen) * sin(rad)).toFloat()
-                )
-
-                drawLine(
-                    color = color,
-                    start = start,
-                    end = end,
-                    strokeWidth = if (isMajor) 3f else 1.5f,
-                    cap = StrokeCap.Round
-                )
-            }
-
-            // Needle
-            val needleAngle = startAngle + ((value - minValue) / (maxValue - minValue)).coerceIn(0f, 1f) * sweepAngle
+            // 5. Indicator Marker (Peripheral only)
+            val needleAngle = startAngle + valueSweep
             val needleRad = Math.toRadians(needleAngle.toDouble())
-            val needleLength = innerRadius * 0.95f
-
+            
             drawLine(
-                color = Color.White,
-                start = center,
-                end = Offset(
-                    center.x + (needleLength * cos(needleRad)).toFloat(),
-                    center.y + (needleLength * sin(needleRad)).toFloat()
+                color = Color.Red,
+                start = Offset(
+                    center.x + (innerRadius * cos(needleRad)).toFloat(),
+                    center.y + (innerRadius * sin(needleRad)).toFloat()
                 ),
-                strokeWidth = 4f,
+                end = Offset(
+                    center.x + (outerRadius * 1.05f * cos(needleRad)).toFloat(),
+                    center.y + (outerRadius * 1.05f * sin(needleRad)).toFloat()
+                ),
+                strokeWidth = 5f,
                 cap = StrokeCap.Round
-            )
-
-            // Needle Center
-            drawCircle(
-                color = Color.White,
-                radius = 6f,
-                center = center
-            )
-            drawCircle(
-                color = Color.Black,
-                radius = 3f,
-                center = center
             )
         }
 
-        // Labels
-        for (i in 0 until numLabels) {
-            val angle = startAngle + (i.toFloat() / (numLabels - 1)) * sweepAngle
+        // Labels inside the ring
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val labelRadius = with(density) { 
+            if (isSemiCircle) (heightDp / 0.85f) * 0.62f 
+            else (widthDp / 2) * 0.62f 
+        }
+        val labelStep = if (maxValue > 100) 20f else 10f
+        val numLabels = ((maxValue - minValue) / labelStep).toInt()
+        
+        for (i in 0..numLabels) {
+            val labelValue = minValue + (i * labelStep)
+            val angle = startAngle + (i.toFloat() * labelStep / (maxValue - minValue)) * sweepAngle
             val rad = Math.toRadians(angle.toDouble())
-            val labelValue = minValue + (i.toFloat() / (numLabels - 1)) * (maxValue - minValue)
-            val offsetRadius = 0.85f // Normalized radius for labels
 
             Box(
-                modifier = Modifier
-                    .fillMaxSize(),
-                contentAlignment = Alignment.Center
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = if (isSemiCircle) Alignment.BottomCenter else Alignment.Center
             ) {
-                val radiusPx = sizeOfBox() / 2
                 Text(
                     text = labelValue.toInt().toString(),
-                    color = if (labelValue >= (warningValue ?: (maxValue * 0.8f))) Color.Red else Color.White,
-                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 11.sp,
                     fontFamily = serpentine,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.offset(
-                        x = (radiusPx * 1.1f * cos(rad)).toFloat().dp,
-                        y = (radiusPx * 1.1f * sin(rad)).toFloat().dp
+                        x = (labelRadius.value * cos(rad)).dp,
+                        y = (labelRadius.value * sin(rad)).dp - (if (isSemiCircle) 10.dp else 0.dp)
                     )
                 )
             }
         }
 
-        // Center Readout
+        if (showDigitalValue) {
+            // Digital Readout (Top Half)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.offset(y = (-widthDp.value * 0.05f).dp)
+            ) {
+                Text(
+                    text = String.format(Locale.US, "%.1f", value),
+                    color = baseColor,
+                    fontSize = (widthDp.value * 0.14f).sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontFamily = serpentine
+                )
+            }
+        }
+
+        // Label and Gear (Bottom or Mid-Top)
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.offset(y = (20).dp)
+            modifier = Modifier.align(if (isSemiCircle) Alignment.BottomCenter else Alignment.Center)
+                .offset(
+                    y = if (showDigitalValue) (widthDp.value * 0.26f).dp 
+                        else if (isSemiCircle) (-12).dp
+                        else (-widthDp.value * 0.12f).dp
+                )
         ) {
             Text(
-                text = String.format(Locale.US, "%.1f", value),
-                color = Color.White,
-                fontSize = 32.sp,
+                text = if (isBoostActive) "BOOST" else label,
+                color = if (isBoostActive) Color.Red else Color.Gray,
+                fontSize = (widthDp.value * (if (showDigitalValue) 0.06f else 0.08f)).sp,
+                fontFamily = serpentine,
                 fontWeight = FontWeight.Bold,
-                fontFamily = serpentine
-            )
-            Text(
-                text = label,
-                color = Color.Gray,
-                fontSize = 12.sp,
-                fontFamily = serpentine
+                textAlign = TextAlign.Center
             )
             if (gear != null) {
                 Text(
-                    text = "GEAR $gear",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = serpentine,
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                    text = "$gear",
+                    fontSize = (widthDp.value * 0.09f).sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = serpentine
                 )
+                if (topspeed != null) {
+                    Text(
+                        text = String.format(Locale.US, "MAX %.1f", topspeed),
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = (widthDp.value * 0.045f).sp,
+                        fontFamily = serpentine,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
@@ -558,10 +626,10 @@ fun BatteryLevelMeter(voltage: Float, minV: Float = 42f, maxV: Float = 68f) {
 
                 for (i in 1..totalBlocks) {
                     val blockColor = when {
-                        i <= totalBlocks * 0.25f -> Color(0xFFD32F2F)
-                        i <= totalBlocks * 0.5f -> Color(0xFFF57C00)
-                        i <= totalBlocks * 0.75f -> Color(0xFFFBC02D)
-                        else -> Color(0xFF388E3C)
+                        i <= 2 -> Color(0xFFD32F2F) // Red (2 blocks)
+                        i <= 4 -> Color(0xFFF57C00) // Orange (2 blocks)
+                        i <= 5 -> Color(0xFFFBC02D) // Yellow (1 block)
+                        else -> Color(0xFF388E3C)   // Green (Rest)
                     }
 
                     val isFilled = i <= filledBlocks
@@ -600,9 +668,6 @@ fun BatteryLevelMeter(voltage: Float, minV: Float = 42f, maxV: Float = 68f) {
     }
 }
 
-private fun sizeOfBox(): Float = 200f
-private fun radiusToDp(px: Float): Float = px
-
 @Composable
 fun StatsSection(data: FardriverData, settings: FardriverSettings) {
     val ahMi = if (data.tripMiles > 0.1) data.usedAh / data.tripMiles else 0.0
@@ -612,30 +677,26 @@ fun StatsSection(data: FardriverData, settings: FardriverSettings) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 6.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
         border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFF424242)),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(modifier = Modifier.fillMaxWidth()) {
                 StatItem(Modifier.weight(1f), "TRIP", String.format(Locale.US, "%.1f", data.tripMiles), "mi")
                 StatItem(Modifier.weight(1f), "TIME", formatSeconds(data.tripSeconds), "")
             }
             Row(modifier = Modifier.fillMaxWidth()) {
-                StatItem(Modifier.weight(1f), "AVG SPD", String.format(Locale.US, "%.1f", data.avgSpeed), "mph")
-                StatItem(Modifier.weight(1f), "MAX SPD", String.format(Locale.US, "%.1f", data.maxSpeed), "mph")
-            }
-            Row(modifier = Modifier.fillMaxWidth()) {
                 StatItem(Modifier.weight(1f), "USED AH", String.format(Locale.US, "%.1f", data.usedAh), "ah")
-                StatItem(Modifier.weight(1f), "AH/MI", String.format(Locale.US, "%.1f", ahMi), "")
+                StatItem(Modifier.weight(1f), "ODO", String.format(Locale.US, "%.0f", totalOdo), "mi")
             }
             Row(modifier = Modifier.fillMaxWidth()) {
                 StatItem(Modifier.weight(1f), "RANGE EST", String.format(Locale.US, "%.1f", range), "mi")
-                StatItem(Modifier.weight(1f), "ODO", String.format(Locale.US, "%.1f", totalOdo), "mi")
+                StatItem(Modifier.weight(1f), "AH/MI", String.format(Locale.US, "%.1f", ahMi), "")
             }
         }
     }
@@ -647,25 +708,26 @@ fun StatItem(modifier: Modifier, label: String, value: String, unit: String) {
         Text(
             text = label,
             color = Color(0xFFBDBDBD),
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             fontFamily = serpentine,
             fontWeight = FontWeight.Bold
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(2.dp))
         Box(
             modifier = Modifier
-                .width(140.dp) // Fixed width for all boxes
-                .clip(RoundedCornerShape(4.dp))
+                .width(110.dp)
+                .height(40.dp)
+                .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFF0D0D0D))
-                .border(1.dp, Color(0xFF333333), RoundedCornerShape(4.dp))
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .border(1.dp, Color(0xFF333333), RoundedCornerShape(8.dp))
+                .padding(horizontal = 4.dp),
             contentAlignment = Alignment.Center
         ) {
             // Background "shadow" for LCD segments
             Text(
                 text = value.replace(Regex("[0-9]"), "8"),
                 color = Color(0xFF1A1A1A),
-                fontSize = 28.sp,
+                fontSize = 20.sp,
                 fontFamily = dseg7,
                 textAlign = TextAlign.Center
             )
@@ -674,7 +736,7 @@ fun StatItem(modifier: Modifier, label: String, value: String, unit: String) {
                 Text(
                     text = value,
                     color = Color(0xFF00E676), // Classic green LCD look
-                    fontSize = 28.sp,
+                    fontSize = 20.sp,
                     fontFamily = dseg7,
                     textAlign = TextAlign.Center
                 )
@@ -682,7 +744,7 @@ fun StatItem(modifier: Modifier, label: String, value: String, unit: String) {
                     Text(
                         text = " $unit",
                         color = Color(0xFF00E676),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontFamily = serpentine,
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
@@ -692,10 +754,11 @@ fun StatItem(modifier: Modifier, label: String, value: String, unit: String) {
     }
 }
 
-fun formatSeconds(seconds: Long): String {
-    val h = seconds / 3600
-    val m = (seconds % 3600) / 60
-    val s = seconds % 60
+fun formatSeconds(seconds: Double): String {
+    val totalSeconds = seconds.toLong()
+    val h = totalSeconds / 3600
+    val m = (totalSeconds % 3600) / 60
+    val s = totalSeconds % 60
     return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s)
     else String.format(Locale.US, "%02d:%02d", m, s)
 }
@@ -806,6 +869,8 @@ fun SettingsScreen(repository: FardriverRepository, onBack: () -> Unit) {
     var mphMax by remember(settings) { mutableStateOf(settings.mphMax.toString()) }
     var voltageMin by remember(settings) { mutableStateOf(settings.voltageMin.toString()) }
     var voltageMax by remember(settings) { mutableStateOf(settings.voltageMax.toString()) }
+    var tempMin by remember(settings) { mutableStateOf(settings.tempMin.toString()) }
+    var tempMax by remember(settings) { mutableStateOf(settings.tempMax.toString()) }
 
     var showTripResetDialog by remember { mutableStateOf(false) }
 
@@ -858,40 +923,28 @@ fun SettingsScreen(repository: FardriverRepository, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Text(
-                "Battery Config",
+                "Battery & Odometer",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
                 fontFamily = serpentine
             )
 
-            OutlinedTextField(
-                value = battCapacity,
-                onValueChange = { battCapacity = it },
-                label = { Text("Battery Capacity (Ah)") },
-                placeholder = { Text("e.g. 40") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth(),
-                supportingText = { Text("Total rated capacity of your battery pack") }
-            )
-
-            HorizontalDivider()
-
-            Text(
-                "Odometer Settings",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontFamily = serpentine
-            )
-
-            OutlinedTextField(
-                value = odoOffset,
-                onValueChange = { odoOffset = it },
-                label = { Text("Odometer Start Point (mi)") },
-                placeholder = { Text("e.g. 500") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth(),
-                supportingText = { Text("Initial mileage of the vehicle") }
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedTextField(
+                    value = battCapacity,
+                    onValueChange = { battCapacity = it },
+                    label = { Text("Battery (Ah)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = odoOffset,
+                    onValueChange = { odoOffset = it },
+                    label = { Text("Odo Offset") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.weight(1f)
+                )
+            }
 
             HorizontalDivider()
 
@@ -953,6 +1006,23 @@ fun SettingsScreen(repository: FardriverRepository, onBack: () -> Unit) {
                 )
             }
 
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedTextField(
+                    value = tempMin,
+                    onValueChange = { tempMin = it },
+                    label = { Text("Temp Min (°F)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = tempMax,
+                    onValueChange = { tempMax = it },
+                    label = { Text("Temp Max (°F)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
             HorizontalDivider()
 
             Text(
@@ -984,7 +1054,9 @@ fun SettingsScreen(repository: FardriverRepository, onBack: () -> Unit) {
                         mphMin = mphMin.toFloatOrNull() ?: settings.mphMin,
                         mphMax = mphMax.toFloatOrNull() ?: settings.mphMax,
                         voltageMin = voltageMin.toFloatOrNull() ?: settings.voltageMin,
-                        voltageMax = voltageMax.toFloatOrNull() ?: settings.voltageMax
+                        voltageMax = voltageMax.toFloatOrNull() ?: settings.voltageMax,
+                        tempMin = tempMin.toFloatOrNull() ?: settings.tempMin,
+                        tempMax = tempMax.toFloatOrNull() ?: settings.tempMax
                     )
                     repository.updateSettings(newSettings)
                     onBack()
@@ -1037,13 +1109,10 @@ fun DiagnosticsScreen(repository: FardriverRepository, onBack: () -> Unit) {
             item { DiagnosticRow("Voltage", String.format(Locale.US, "%.2f V", uiState.voltage)) }
             item { DiagnosticRow("Line Current", String.format(Locale.US, "%.2f A", uiState.lineCurrent)) }
             item { DiagnosticRow("Power", String.format(Locale.US, "%.1f W", uiState.power)) }
-            item { DiagnosticRow("RPM", String.format(Locale.US, "%.0f", uiState.rpm)) }
-            item { DiagnosticRow("Raw RPM", uiState.rawRpm.toString()) }
             item { DiagnosticRow("Gear", uiState.gear.toString()) }
-            item { DiagnosticRow("Speed (Controller)", String.format(Locale.US, "%.1f mph", uiState.speed)) }
-            item { DiagnosticRow("Speed (GPS)", String.format(Locale.US, "%.1f mph", uiState.gpsSpeed)) }
-            item { DiagnosticRow("Controller Temp", "${uiState.controllerTemp} °C") }
-            item { DiagnosticRow("Motor Temp", "${uiState.motorTemp} °C") }
+            item { DiagnosticRow("Speed", String.format(Locale.US, "%.1f mph", uiState.speed)) }
+            item { DiagnosticRow("Controller Temp", String.format(Locale.US, "%.1f °F", uiState.controllerTemp)) }
+            item { DiagnosticRow("Motor Temp", String.format(Locale.US, "%.1f °F", uiState.motorTemp)) }
             item { DiagnosticRow("State of Charge (SOC)", "${uiState.soc} %") }
             item { DiagnosticRow("Regen Active", uiState.isRegenFromCurrent.toString()) }
             item { DiagnosticRow("Odometer", String.format(Locale.US, "%.3f mi", uiState.odometerMiles)) }

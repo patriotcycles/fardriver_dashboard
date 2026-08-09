@@ -27,18 +27,16 @@ data class FardriverData(
     val voltage: Float = 0f,
     val lineCurrent: Float = 0f,
     val power: Float = 0f,
-    val rpm: Float = 0f,
-    val rawRpm: Short = 0,
     val gear: Int = 0,
     val speed: Float = 0f,
     val gpsSpeed: Float = 0f,
-    val controllerTemp: Int = 0,
-    val motorTemp: Int = 0,
+    val controllerTemp: Float = 0f,
+    val motorTemp: Float = 0f,
     val soc: Int = 0,
     val isRegenFromCurrent: Boolean = false,
     val odometerMiles: Double = 0.0,
     val tripMiles: Double = 0.0,
-    val tripSeconds: Long = 0,
+    val tripSeconds: Double = 0.0,
     val usedAh: Double = 0.0,
     val maxSpeed: Float = 0f,
     val totalSpeedSum: Double = 0.0,
@@ -49,9 +47,6 @@ val FardriverData.avgSpeed: Float
     get() = if (speedCount > 0) (totalSpeedSum / speedCount).toFloat() else 0f
 
 data class FardriverSettings(
-    val wheelCircumferenceM: Float = 1.999f,
-    val motorPolePairs: Int = 10,
-    val speedMultiplier: Float = 1.0f,
     val batteryCapacityAh: Float = 40.0f,
     val odometerOffset: Float = 0.0f,
     val ampsMin: Float = 0f,
@@ -59,7 +54,9 @@ data class FardriverSettings(
     val mphMin: Float = 0f,
     val mphMax: Float = 50f,
     val voltageMin: Float = 42f,
-    val voltageMax: Float = 68f
+    val voltageMax: Float = 68f,
+    val tempMin: Float = 32f,
+    val tempMax: Float = 212f
 )
 
 class FardriverRepository(private val context: Context) {
@@ -81,7 +78,11 @@ class FardriverRepository(private val context: Context) {
             odometerMiles = sharedPrefs.getFloat("odometer", 0f).toDouble(),
             tripMiles = sharedPrefs.getFloat("trip", 0f).toDouble(),
             usedAh = sharedPrefs.getFloat("used_ah", 0f).toDouble(),
-            tripSeconds = sharedPrefs.getLong("trip_seconds", 0L)
+            tripSeconds = try {
+                sharedPrefs.getFloat("trip_seconds", 0f).toDouble()
+            } catch (e: Exception) {
+                sharedPrefs.getLong("trip_seconds", 0L).toDouble()
+            }
         )
     )
     val uiState: StateFlow<FardriverData> = _uiState
@@ -107,9 +108,6 @@ class FardriverRepository(private val context: Context) {
 
     private fun loadSettings(): FardriverSettings {
         return FardriverSettings(
-            wheelCircumferenceM = sharedPrefs.getFloat("wheel_circ", 1.999f),
-            motorPolePairs = sharedPrefs.getInt("pole_pairs", 10),
-            speedMultiplier = sharedPrefs.getFloat("speed_mult", 1.0f),
             batteryCapacityAh = sharedPrefs.getFloat("battery_capacity", 40.0f),
             odometerOffset = sharedPrefs.getFloat("odometer_offset", 0.0f),
             ampsMin = sharedPrefs.getFloat("amps_min", 0f),
@@ -117,15 +115,14 @@ class FardriverRepository(private val context: Context) {
             mphMin = sharedPrefs.getFloat("mph_min", 0f),
             mphMax = sharedPrefs.getFloat("mph_max", 50f),
             voltageMin = sharedPrefs.getFloat("voltage_min", 42f),
-            voltageMax = sharedPrefs.getFloat("voltage_max", 68f)
+            voltageMax = sharedPrefs.getFloat("voltage_max", 68f),
+            tempMin = sharedPrefs.getFloat("temp_min", 32f),
+            tempMax = sharedPrefs.getFloat("temp_max", 212f)
         )
     }
 
     fun updateSettings(newSettings: FardriverSettings) {
         sharedPrefs.edit {
-            putFloat("wheel_circ", newSettings.wheelCircumferenceM)
-            putInt("pole_pairs", newSettings.motorPolePairs)
-            putFloat("speed_mult", newSettings.speedMultiplier)
             putFloat("battery_capacity", newSettings.batteryCapacityAh)
             putFloat("odometer_offset", newSettings.odometerOffset)
             putFloat("amps_min", newSettings.ampsMin)
@@ -134,6 +131,8 @@ class FardriverRepository(private val context: Context) {
             putFloat("mph_max", newSettings.mphMax)
             putFloat("voltage_min", newSettings.voltageMin)
             putFloat("voltage_max", newSettings.voltageMax)
+            putFloat("temp_min", newSettings.tempMin)
+            putFloat("temp_max", newSettings.tempMax)
         }
         _settings.value = newSettings
     }
@@ -142,12 +141,12 @@ class FardriverRepository(private val context: Context) {
         sharedPrefs.edit {
             putFloat("trip", 0f)
             putFloat("used_ah", 0f)
-            putLong("trip_seconds", 0L)
+            putFloat("trip_seconds", 0f)
         }
         _uiState.value = _uiState.value.copy(
             tripMiles = 0.0,
             usedAh = 0.0,
-            tripSeconds = 0,
+            tripSeconds = 0.0,
             maxSpeed = 0f,
             totalSpeedSum = 0.0,
             speedCount = 0
@@ -206,10 +205,8 @@ class FardriverRepository(private val context: Context) {
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
-            if (location.hasSpeed()) {
-                val speedMph = location.speed * 2.23694f
-                _uiState.value = _uiState.value.copy(gpsSpeed = speedMph)
-            }
+            val speedMph = location.speed * 2.23694f
+            _uiState.value = _uiState.value.copy(gpsSpeed = speedMph)
         }
 
         @Deprecated("Deprecated in Java")
@@ -327,8 +324,7 @@ class FardriverRepository(private val context: Context) {
         when (address) {
             0xE2 -> {
                 val gear = ((pData[0].toInt() shr 2) and 0x03) + 1
-                val rawRpm = getShort(pData[6], pData[7])
-                currentData = currentData.copy(gear = gear, rawRpm = rawRpm)
+                currentData = currentData.copy(gear = gear)
             }
 
             0xE8 -> {
@@ -350,58 +346,54 @@ class FardriverRepository(private val context: Context) {
             }
 
             0xD6 -> {
-                val newControllerTemp = getShort(pData[10], pData[11]).toInt()
-                if (newControllerTemp in -19..99) {
-                    currentData = currentData.copy(controllerTemp = newControllerTemp)
+                val rawC = getShort(pData[10], pData[11]).toFloat()
+                if (rawC in -20f..150f) {
+                    val tempF = rawC * 9f / 5f + 32f
+                    currentData = currentData.copy(controllerTemp = tempF)
                 }
             }
 
             0xF4 -> {
-                val newMotorTemp = getShort(pData[0], pData[1]).toInt()
-                if (newMotorTemp in -19..199) {
-                    currentData = currentData.copy(motorTemp = newMotorTemp)
+                val rawC = getShort(pData[0], pData[1]).toFloat()
+                if (rawC in -20f..250f) {
+                    val tempF = rawC * 9f / 5f + 32f
+                    currentData = currentData.copy(motorTemp = tempF)
                 }
                 val soc = pData[3].toInt() and 0xFF
                 currentData = currentData.copy(soc = soc)
             }
         }
 
-        val settings = _settings.value
-        val displayRawRpm = if (currentData.rawRpm < 0) 0 else currentData.rawRpm.toInt()
-        val rpm = displayRawRpm * 4.0f / settings.motorPolePairs
+        val speed = currentData.gpsSpeed
+        val power =
+            if (currentData.voltage > 0) currentData.voltage * currentData.lineCurrent else 0f
 
-        val speedMs = (rpm / 60.0f) * settings.wheelCircumferenceM
-        val distanceMeters = speedMs * (timeDeltaMs / 1000.0f)
-        val distanceMiles = distanceMeters / 1609.344
+        val deltaSeconds = (timeDeltaMs / 1000.0).coerceAtMost(2.0)
+        val distanceMiles = (speed / 3600.0) * deltaSeconds
 
         val newOdo = currentData.odometerMiles + distanceMiles
         val newTrip = currentData.tripMiles + distanceMiles
-        val deltaSeconds = timeDeltaMs / 1000.0
         val usedAhDelta = (currentData.lineCurrent * deltaSeconds) / 3600.0
         val newUsedAh = currentData.usedAh + usedAhDelta
-        val newTripSeconds =
-            currentData.tripSeconds + (if (distanceMiles > 0) (timeDeltaMs / 1000) else 0L)
+        
+        // Start timer if moving > 0.5mph OR drawing > 1.0A of current
+        val isBikeActive = speed > 0.5f || abs(currentData.lineCurrent) > 1.0f
+        val newTripSeconds = currentData.tripSeconds + (if (isBikeActive) deltaSeconds else 0.0)
 
-        if (abs(newOdo - (sharedPrefs?.getFloat("odometer", 0f) ?: 0f).toDouble()) > 0.05) {
-            sharedPrefs?.edit {
+        if (abs(newOdo - (sharedPrefs.getFloat("odometer", 0f)).toDouble()) > 0.05) {
+            sharedPrefs.edit {
                 putFloat("odometer", newOdo.toFloat())
                 putFloat("trip", newTrip.toFloat())
                 putFloat("used_ah", newUsedAh.toFloat())
-                putLong("trip_seconds", newTripSeconds)
+                putFloat("trip_seconds", newTripSeconds.toFloat())
             }
         }
-
-        val speedKmh = (rpm * settings.wheelCircumferenceM * 60.0f) / 1000.0f
-        val speed = speedKmh * 0.621371f * settings.speedMultiplier
-        val power =
-            if (currentData.voltage > 0) currentData.voltage * currentData.lineCurrent else 0f
 
         val newMaxSpeed = if (speed > currentData.maxSpeed) speed else currentData.maxSpeed
         val newTotalSpeedSum = currentData.totalSpeedSum + speed
         val newSpeedCount = currentData.speedCount + 1
 
         _uiState.value = currentData.copy(
-            rpm = rpm,
             speed = speed,
             power = power,
             odometerMiles = newOdo,
