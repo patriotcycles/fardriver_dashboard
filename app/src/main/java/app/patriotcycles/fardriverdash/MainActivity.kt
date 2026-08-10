@@ -71,7 +71,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -310,6 +309,7 @@ fun DashboardScreen(
                     label = "MPH",
                     gear = uiState.gear,
                     topspeed = uiState.maxSpeed,
+                    avgspeed = uiState.avgSpeed,
                     modifier = Modifier
                         .size(240.dp)
                         .align(Alignment.TopEnd)
@@ -368,11 +368,12 @@ fun AnalogGauge(
     minValue: Float = 0f,
     maxValue: Float = 50f,
     label: String,
-    modifier: Modifier = Modifier,
+    @SuppressLint("ModifierParameter") modifier: Modifier = Modifier,
     startAngle: Float = 140f,
     sweepAngle: Float = 260f,
     gear: Int? = null,
     topspeed: Float? = null,
+    avgspeed: Float? = null,
     warningValue: Float? = null,
     showDigitalValue: Boolean = true,
     isBoostActive: Boolean = false
@@ -443,8 +444,7 @@ fun AnalogGauge(
                 val isMid = tickValue.toInt() % 5 == 0 && !isMajor
                 
                 val tStart = if (isMajor) tickInnerRadius - 10f else if (isMid) tickInnerRadius - 6f else tickInnerRadius
-                val tEnd = tickOuterRadius
-                
+
                 val color = if (isMajor) Color.White else Color.White.copy(alpha = 0.4f)
                 val stroke = if (isMajor) 2.5f else 1f
 
@@ -455,8 +455,8 @@ fun AnalogGauge(
                         center.y + (tStart * sin(rad)).toFloat()
                     ),
                     end = Offset(
-                        center.x + (tEnd * cos(rad)).toFloat(),
-                        center.y + (tEnd * sin(rad)).toFloat()
+                        center.x + (tickOuterRadius * cos(rad)).toFloat(),
+                        center.y + (tickOuterRadius * sin(rad)).toFloat()
                     ),
                     strokeWidth = stroke
                 )
@@ -496,11 +496,9 @@ fun AnalogGauge(
         }
 
         // Labels inside the ring
-        val density = androidx.compose.ui.platform.LocalDensity.current
-        val labelRadius = with(density) { 
-            if (isSemiCircle) (heightDp / 0.85f) * 0.62f 
-            else (widthDp / 2) * 0.62f 
-        }
+        val labelRadius = if (isSemiCircle) (heightDp / 0.85f) * 0.76f
+        else (widthDp / 2) * 0.72f
+  //      val labelRadius = (widthDp / 2) * 0.90f
         val labelStep = if (maxValue > 100) 20f else 10f
         val numLabels = ((maxValue - minValue) / labelStep).toInt()
         
@@ -511,7 +509,8 @@ fun AnalogGauge(
 
             Box(
                 modifier = Modifier.fillMaxSize(),
-                contentAlignment = if (isSemiCircle) Alignment.BottomCenter else Alignment.Center
+                contentAlignment = if (isSemiCircle) Alignment.BottomCenter
+                else Alignment.Center
             ) {
                 Text(
                     text = labelValue.toInt().toString(),
@@ -521,7 +520,7 @@ fun AnalogGauge(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.offset(
                         x = (labelRadius.value * cos(rad)).dp,
-                        y = (labelRadius.value * sin(rad)).dp - (if (isSemiCircle) 10.dp else 0.dp)
+                        y = (labelRadius.value * sin(rad)).dp - (if (isSemiCircle) 2.dp else 0.dp)
                     )
                 )
             }
@@ -549,7 +548,7 @@ fun AnalogGauge(
             modifier = Modifier.align(if (isSemiCircle) Alignment.BottomCenter else Alignment.Center)
                 .offset(
                     y = if (showDigitalValue) (widthDp.value * 0.26f).dp 
-                        else if (isSemiCircle) (-12).dp
+                        else if (isSemiCircle) (2).dp
                         else (-widthDp.value * 0.12f).dp
                 )
         ) {
@@ -563,7 +562,7 @@ fun AnalogGauge(
             )
             if (gear != null) {
                 Text(
-                    text = "$gear",
+                    text = gear.toString(),
                     fontSize = (widthDp.value * 0.09f).sp,
                     fontWeight = FontWeight.Black,
                     fontFamily = serpentine
@@ -571,6 +570,15 @@ fun AnalogGauge(
                 if (topspeed != null) {
                     Text(
                         text = String.format(Locale.US, "MAX %.1f", topspeed),
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = (widthDp.value * 0.045f).sp,
+                        fontFamily = serpentine,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                if (avgspeed != null) {
+                    Text(
+                        text = String.format(Locale.US, "AVG %.1f", avgspeed),
                         color = Color.White.copy(alpha = 0.6f),
                         fontSize = (widthDp.value * 0.045f).sp,
                         fontFamily = serpentine,
