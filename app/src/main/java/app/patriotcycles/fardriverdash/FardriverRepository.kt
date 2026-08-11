@@ -40,7 +40,7 @@ data class FardriverData(
     val usedAh: Double = 0.0,
     val maxSpeed: Float = 0f,
     val totalSpeedSum: Double = 0.0,
-    val speedCount: Long = 0
+    val speedCount: Long = 0,
 )
 
 val FardriverData.avgSpeed: Float
@@ -56,7 +56,7 @@ data class FardriverSettings(
     val voltageMin: Float = 42f,
     val voltageMax: Float = 68f,
     val tempMin: Float = 32f,
-    val tempMax: Float = 212f
+    val tempMax: Float = 212f,
 )
 
 class FardriverRepository(private val context: Context) {
@@ -81,7 +81,7 @@ class FardriverRepository(private val context: Context) {
             usedAh = sharedPrefs.getFloat("used_ah", 0f).toDouble(),
             tripSeconds = try {
                 sharedPrefs.getFloat("trip_seconds", 0f).toDouble()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 sharedPrefs.getLong("trip_seconds", 0L).toDouble()
             }
         )
@@ -182,20 +182,21 @@ class FardriverRepository(private val context: Context) {
         try {
             bluetoothGatt?.disconnect()
             bluetoothGatt?.close()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
         bluetoothGatt = null
 
         println("FardriverRepository: Connecting to ${device.address}")
         sharedPrefs.edit { putString("last_device_address", device.address) }
         _connectionState.value = "Connecting..."
-        bluetoothGatt = device.connectGatt(context, false, gattCallback)
+        @Suppress("DEPRECATION")
+        bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
 
     @RequiresPermission(allOf = [android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT])
     fun autoConnect() {
         val currentState = _connectionState.value
-        if (currentState == "Connected" || currentState.startsWith("Connecting") || currentState == "Discovering Services...") {
+        if ((currentState == "Connected") || currentState.startsWith("Connecting") || (currentState == "Discovering Services...")) {
             return
         }
 
@@ -204,7 +205,7 @@ class FardriverRepository(private val context: Context) {
 
         val device = try {
             bluetoothAdapter?.getRemoteDevice(lastAddress)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         } ?: return
 
@@ -214,9 +215,10 @@ class FardriverRepository(private val context: Context) {
         try {
             bluetoothGatt?.disconnect()
             bluetoothGatt?.close()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
-        bluetoothGatt = device.connectGatt(context, true, gattCallback)
+        @Suppress("DEPRECATION")
+        bluetoothGatt = device.connectGatt(context, true, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
 
     @SuppressLint("MissingPermission")
@@ -362,7 +364,7 @@ class FardriverRepository(private val context: Context) {
                 var lineCurrent = currentData.lineCurrent
                 var isRegen = currentData.isRegenFromCurrent
 
-                if (newVoltage in 0f..100f) {
+                if ((newVoltage in 0f..100f)) {
                     currentData = currentData.copy(voltage = newVoltage)
                 }
 

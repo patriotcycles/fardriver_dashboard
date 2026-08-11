@@ -100,7 +100,7 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val permissionLauncher = registerForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions()
+            ActivityResultContracts.RequestMultiplePermissions(),
         ) { permissions ->
             if (permissions.values.all { it }) {
                 println("MainActivity: Permissions granted by user, starting autoConnect")
@@ -123,7 +123,7 @@ class MainActivity : ComponentActivity() {
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
                 Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.ACCESS_FINE_LOCATION
+                Manifest.permission.ACCESS_FINE_LOCATION,
             )
         } else {
             arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -144,16 +144,14 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainContent(repository: FardriverRepository) {
-    var currentScreen by remember { mutableStateOf(Screen.Dashboard) }
-    var showConnectionResetDialog by remember { mutableStateOf(false) }
-    var hasPromptedThisSession by remember { mutableStateOf(false) }
+    var currentScreen by remember { mutableStateOf(value = Screen.Dashboard) }
+    var showConnectionResetDialog by remember { mutableStateOf(value = false) }
+    var hasPromptedThisSession by remember { mutableStateOf(value = false) }
 
     val status by repository.connectionState.collectAsState()
 
-    val context = androidx.compose.ui.platform.LocalContext.current
-
     LaunchedEffect(status) {
-        if (status == "Connected" && !hasPromptedThisSession) {
+        if ((status == "Connected") && !hasPromptedThisSession) {
             showConnectionResetDialog = true
             hasPromptedThisSession = true
         }
@@ -166,23 +164,27 @@ fun MainContent(repository: FardriverRepository) {
             text = {
                 Text(
                     "Would you like to reset the trip data for this ride?",
-                    fontFamily = serpentine
+                    fontFamily = serpentine,
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    repository.resetTrip()
-                    showConnectionResetDialog = false
-                }) { Text("Reset", color = Color.Red, fontFamily = serpentine) }
+                TextButton(
+                    onClick = {
+                        repository.resetTrip()
+                        showConnectionResetDialog = false
+                    },
+                ) {
+                    Text("Reset", color = Color.Red, fontFamily = serpentine)
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showConnectionResetDialog = false }) {
                     Text(
                         "Keep Data",
-                        fontFamily = serpentine
+                        fontFamily = serpentine,
                     )
                 }
-            }
+            },
         )
     }
 
@@ -191,23 +193,19 @@ fun MainContent(repository: FardriverRepository) {
             repository = repository,
             onOpenSettings = { currentScreen = Screen.Settings },
             onOpenConnection = { currentScreen = Screen.Connection },
-            onOpenDiagnostics = { currentScreen = Screen.Diagnostics }
-        )
+        ) { currentScreen = Screen.Diagnostics }
 
-        Screen.Settings -> SettingsScreen(
-            repository = repository,
-            onBack = { currentScreen = Screen.Dashboard }
-        )
+        Screen.Settings -> SettingsScreen(repository = repository) {
+            currentScreen = Screen.Dashboard
+        }
 
-        Screen.Connection -> ConnectionScreen(
-            repository = repository,
-            onBack = { currentScreen = Screen.Dashboard }
-        )
+        Screen.Connection -> ConnectionScreen(repository = repository) {
+            currentScreen = Screen.Dashboard
+        }
 
-        Screen.Diagnostics -> DiagnosticsScreen(
-            repository = repository,
-            onBack = { currentScreen = Screen.Dashboard }
-        )
+        Screen.Diagnostics -> DiagnosticsScreen(repository = repository) {
+            currentScreen = Screen.Dashboard
+        }
     }
 }
 
@@ -217,7 +215,7 @@ fun DashboardScreen(
     repository: FardriverRepository,
     onOpenSettings: () -> Unit,
     onOpenConnection: () -> Unit,
-    onOpenDiagnostics: () -> Unit
+    onOpenDiagnostics: () -> Unit,
 ) {
     val uiState by repository.uiState.collectAsState()
     val status by repository.connectionState.collectAsState()
@@ -228,7 +226,7 @@ fun DashboardScreen(
                 title = { Text("Fardriver Dashboard", fontFamily = serpentine) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
                 actions = {
                     val iconColor = when (status) {
@@ -240,7 +238,7 @@ fun DashboardScreen(
                         Icon(
                             Icons.Default.Bluetooth,
                             contentDescription = "Connect",
-                            tint = iconColor
+                            tint = iconColor,
                         )
                     }
                     IconButton(onClick = onOpenDiagnostics) {
@@ -249,9 +247,9 @@ fun DashboardScreen(
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
-                }
+                },
             )
-        }
+        },
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -260,14 +258,14 @@ fun DashboardScreen(
                 .padding(paddingValues)
                 .padding(horizontal = 14.dp, vertical = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Top
+            verticalArrangement = Arrangement.Top,
         ) {
             // Top Gauges Section
             val settings by repository.settings.collectAsState()
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp)
+                    .height(260.dp),
             ) {
                 // AMPS Gauge (Left)
                 AnalogGauge(
@@ -279,7 +277,7 @@ fun DashboardScreen(
                     modifier = Modifier
                         .size(180.dp)
                         .align(Alignment.BottomStart)
-                        .offset(x = (-20).dp)
+                        .offset(x = (-20).dp),
                 )
 
                 // MPH Gauge (Right)
@@ -294,7 +292,7 @@ fun DashboardScreen(
                     modifier = Modifier
                         .size(240.dp)
                         .align(Alignment.TopEnd)
-                        .offset(x = (20).dp)
+                        .offset(x = (20).dp),
                 )
             }
 
@@ -302,7 +300,7 @@ fun DashboardScreen(
             BatteryLevelMeter(
                 voltage = uiState.voltage,
                 minV = settings.voltageMin,
-                maxV = settings.voltageMax
+                maxV = settings.voltageMax,
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -311,7 +309,7 @@ fun DashboardScreen(
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 AnalogGauge(
                     value = uiState.controllerTemp,
@@ -321,7 +319,7 @@ fun DashboardScreen(
                     showDigitalValue = false,
                     startAngle = 180f,
                     sweepAngle = 180f,
-                    modifier = Modifier.weight(1f).height(80.dp)
+                    modifier = Modifier.weight(1f).height(80.dp),
                 )
                 AnalogGauge(
                     value = uiState.motorTemp,
@@ -331,7 +329,7 @@ fun DashboardScreen(
                     showDigitalValue = false,
                     startAngle = 180f,
                     sweepAngle = 180f,
-                    modifier = Modifier.weight(1f).height(80.dp)
+                    modifier = Modifier.weight(1f).height(80.dp),
                 )
             }
             Spacer(modifier = Modifier.height(20.dp))
@@ -357,9 +355,9 @@ fun AnalogGauge(
     avgspeed: Float? = null,
     warningValue: Float? = null,
     showDigitalValue: Boolean = true,
-    isBoostActive: Boolean = false
+    isBoostActive: Boolean = false,
 ) {
-    val displayWarningValue = warningValue ?: (minValue + (maxValue - minValue) * 0.8f)
+    val displayWarningValue = warningValue ?: (minValue + ((maxValue - minValue) * 0.8f))
     val baseColor = if (isBoostActive) Color.Red else Color.White
     val accentColor = if (isBoostActive) Color.Red else Color(0xFF00E676) // Modern Green
     val isSemiCircle = sweepAngle <= 181f
@@ -399,7 +397,7 @@ fun AnalogGauge(
             )
 
             // Warning Segment (Red part of the background track)
-            val warningStartAngle = startAngle + ((displayWarningValue - minValue) / (maxValue - minValue)) * sweepAngle
+            val warningStartAngle = startAngle + (((displayWarningValue - minValue) / (maxValue - minValue)) * sweepAngle)
             val warningSweep = sweepAngle - (warningStartAngle - startAngle)
             drawArc(
                 color = Color.Red.copy(alpha = 0.3f),
@@ -418,11 +416,11 @@ fun AnalogGauge(
             
             for (i in 0..numTicks) {
                 val tickValue = minValue + (i * tickStep)
-                val angle = startAngle + (i.toFloat() * tickStep / range) * sweepAngle
+                val angle = startAngle + (((i.toFloat() * tickStep) / range) * sweepAngle)
                 val rad = Math.toRadians(angle.toDouble())
                 
-                val isMajor = tickValue.toInt() % 10 == 0
-                val isMid = tickValue.toInt() % 5 == 0 && !isMajor
+                val isMajor = (tickValue.toInt() % 10) == 0
+                val isMid = ((tickValue.toInt() % 5) == 0) && !isMajor
                 
                 val tStart = if (isMajor) tickInnerRadius - 10f else if (isMid) tickInnerRadius - 6f else tickInnerRadius
 
@@ -485,7 +483,7 @@ fun AnalogGauge(
         
         for (i in 0..numLabels) {
             val labelValue = minValue + (i * labelStep)
-            val angle = startAngle + (i.toFloat() * labelStep / (maxValue - minValue)) * sweepAngle
+            val angle = startAngle + (((i.toFloat() * labelStep) / (maxValue - minValue)) * sweepAngle)
             val rad = Math.toRadians(angle.toDouble())
 
             Box(
@@ -548,18 +546,18 @@ fun AnalogGauge(
                     fontWeight = FontWeight.Black,
                     fontFamily = serpentine
                 )
-                if (topspeed != null) {
+                topspeed?.let {
                     Text(
-                        text = String.format(Locale.US, "MAX %.1f", topspeed),
+                        text = String.format(Locale.US, "MAX %.1f", it),
                         color = Color.White.copy(alpha = 0.6f),
                         fontSize = (widthDp.value * 0.045f).sp,
                         fontFamily = serpentine,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                if (avgspeed != null) {
+                avgspeed?.let {
                     Text(
-                        text = String.format(Locale.US, "AVG %.1f", avgspeed),
+                        text = String.format(Locale.US, "AVG %.1f", it),
                         color = Color.White.copy(alpha = 0.6f),
                         fontSize = (widthDp.value * 0.045f).sp,
                         fontFamily = serpentine,
@@ -803,7 +801,7 @@ fun ConnectionScreen(repository: FardriverRepository, onBack: () -> Unit) {
                 fontFamily = serpentine
             )
 
-            if (devices.isEmpty() && status == "Scanning...") {
+            if (devices.isEmpty() && (status == "Scanning...")) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Color.White)
                 }
@@ -861,7 +859,7 @@ fun SettingsScreen(repository: FardriverRepository, onBack: () -> Unit) {
     var tempMin by remember(settings) { mutableStateOf(settings.tempMin.toString()) }
     var tempMax by remember(settings) { mutableStateOf(settings.tempMax.toString()) }
 
-    var showTripResetDialog by remember { mutableStateOf(false) }
+    var showTripResetDialog by remember { mutableStateOf(value = false) }
 
     if (showTripResetDialog) {
         AlertDialog(
@@ -874,10 +872,14 @@ fun SettingsScreen(repository: FardriverRepository, onBack: () -> Unit) {
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    repository.resetTrip()
-                    showTripResetDialog = false
-                }) { Text("Reset", color = Color.Red, fontFamily = serpentine) }
+                TextButton(
+                    onClick = {
+                        repository.resetTrip()
+                        showTripResetDialog = false
+                    },
+                ) {
+                    Text("Reset", color = Color.Red, fontFamily = serpentine)
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showTripResetDialog = false }) {
