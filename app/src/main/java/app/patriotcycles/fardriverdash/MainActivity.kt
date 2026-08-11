@@ -151,25 +151,6 @@ fun MainContent(repository: FardriverRepository) {
     val status by repository.connectionState.collectAsState()
 
     val context = androidx.compose.ui.platform.LocalContext.current
-    LaunchedEffect(Unit) {
-        val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(
-                Manifest.permission.BLUETOOTH_SCAN,
-                Manifest.permission.BLUETOOTH_CONNECT
-            )
-        } else {
-            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-
-        if (requiredPermissions.all {
-                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-            }) {
-            println("MainContent: Initial autoConnect trigger with permissions")
-            repository.autoConnect()
-        } else {
-            println("MainContent: autoConnect skipped, permissions not granted yet")
-        }
-    }
 
     LaunchedEffect(status) {
         if (status == "Connected" && !hasPromptedThisSession) {

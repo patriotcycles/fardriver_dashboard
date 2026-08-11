@@ -72,6 +72,7 @@ class FardriverRepository(private val context: Context) {
     }
 
     private var bluetoothGatt: BluetoothGatt? = null
+    private var lastActiveTime = 0L
 
     private val _uiState = MutableStateFlow(
         FardriverData(
@@ -143,6 +144,7 @@ class FardriverRepository(private val context: Context) {
             putFloat("used_ah", 0f)
             putFloat("trip_seconds", 0f)
         }
+        lastActiveTime = 0L
         _uiState.value = _uiState.value.copy(
             tripMiles = 0.0,
             usedAh = 0.0,
@@ -171,22 +173,50 @@ class FardriverRepository(private val context: Context) {
 
     @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
     fun connectToDevice(device: BluetoothDevice) {
+        if (bluetoothAdapter?.isEnabled != true) {
+            _connectionState.value = "Bluetooth is OFF"
+            return
+        }
+
+        // Clean up any existing connection before starting a new one
+        try {
+            bluetoothGatt?.disconnect()
+            bluetoothGatt?.close()
+        } catch (e: Exception) {
+        }
+        bluetoothGatt = null
+
         println("FardriverRepository: Connecting to ${device.address}")
         sharedPrefs.edit { putString("last_device_address", device.address) }
-        _connectionState.value = "Connecting to ${device.name ?: "Controller"}..."
+        _connectionState.value = "Connecting..."
         bluetoothGatt = device.connectGatt(context, false, gattCallback)
     }
 
     @RequiresPermission(allOf = [android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT])
     fun autoConnect() {
-        val lastAddress = sharedPrefs.getString("last_device_address", null)
-        println("FardriverRepository: Auto-connect check. Last address: $lastAddress")
-        if (lastAddress == null) return
+        val currentState = _connectionState.value
+        if (currentState == "Connected" || currentState.startsWith("Connecting") || currentState == "Discovering Services...") {
+            return
+        }
 
-        val device = bluetoothAdapter?.getRemoteDevice(lastAddress) ?: return
-        
+        val lastAddress = sharedPrefs.getString("last_device_address", null) ?: return
+        if (bluetoothAdapter?.isEnabled != true) return
+
+        val device = try {
+            bluetoothAdapter?.getRemoteDevice(lastAddress)
+        } catch (e: Exception) {
+            null
+        } ?: return
+
         _connectionState.value = "Auto-connecting..."
-        connectToDevice(device)
+
+        // Use autoConnect = true so Android OS waits for the device to appear
+        try {
+            bluetoothGatt?.disconnect()
+            bluetoothGatt?.close()
+        } catch (e: Exception) {
+        }
+        bluetoothGatt = device.connectGatt(context, true, gattCallback)
     }
 
     @SuppressLint("MissingPermission")
@@ -376,9 +406,15 @@ class FardriverRepository(private val context: Context) {
         val usedAhDelta = (currentData.lineCurrent * deltaSeconds) / 3600.0
         val newUsedAh = currentData.usedAh + usedAhDelta
         
-        // Start timer if moving > 0.5mph OR drawing > 1.0A of current
-        val isBikeActive = speed > 0.5f || abs(currentData.lineCurrent) > 1.0f
-        val newTripSeconds = currentData.tripSeconds + (if (isBikeActive) deltaSeconds else 0.0)
+        // Start timer if moving > 5.0mph OR drawing > 1.0A of current
+        val isBikeMovingOrDrawing = speed > 5.0f || abs(currentData.lineCurrent) > 1.0f
+        if (isBikeMovingOrDrawing) {
+            lastActiveTime = currentTime
+        }
+
+        // Keep timer going if active OR if stopped for less than 2 minutes (120,000 ms)
+        val shouldTimerRun = isBikeMovingOrDrawing || (lastActiveTime > 0 && currentTime - lastActiveTime < 120000)
+        val newTripSeconds = currentData.tripSeconds + (if (shouldTimerRun) deltaSeconds else 0.0)
 
         if (abs(newOdo - (sharedPrefs.getFloat("odometer", 0f)).toDouble()) > 0.05) {
             sharedPrefs.edit {
